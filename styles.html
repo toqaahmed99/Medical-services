@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ar">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خريطة المستشفيات</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.1/xlsx.full.min.js"></script> <!-- مكتبة SheetJS -->
+
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+
+        #map-container {
+            width: 100%;
+            height: 100%;
+            /* خصم ارتفاع الشريط العلوي */
+            position: absolute;
+            top: 0px;
+            /* يبدأ أسفل الشريط العلوي */
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+
+        }
+
+
+        /* التأكد من أن الأزرار لا تتداخل مع النقر على الخريطة */
+
+
+
+
+        /* التأكد من أن الخريطة لا تتأثر بالنقر أثناء الضغط على الأزرار */
+        #map {
+            pointer-events: auto;
+        }
+
+
+
+        #header {
+            width: 100%;
+            height: 60px;
+            /* ارتفاع الشريط العلوي */
+            background-color: transparent;
+            /* جعل الخلفية شفافة */
+
+            display: flex;
+            /* يستخدم لتنسيق المحتوى */
+            align-items: center;
+            /* يجعل المحتوى في المنتصف عمودياً */
+            position: fixed;
+            /* يجعل الشريط مثبتاً */
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            padding: 0 10px;
+            /* مسافة داخلية */
+        }
+
+        #header-logo {
+            height: 100%;
+            /* تعديل حجم الصورة */
+            margin-right: 2px;
+            /* مسافة بين الصورة والنص */
+        }
+
+        #header-title {
+            position: absolute;
+            /* لجعل النص في المنتصف */
+            left: 50%;
+            /* تحديد المكان عند المنتصف */
+            transform: translateX(-50%);
+            /* ضبط النص ليكون في المنتصف بشكل دقيق */
+            margin: 0;
+            flex: 1;
+            /* يجعل النص يشغل المساحة المتبقية */
+            text-align: center;
+            /* يضع النص في منتصف المساحة */
+            margin: 0;
+            /* إزالة أي هوامش افتراضية */
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .custom-file-upload {
+            background-color: #08b3ad;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .custom-file-upload:hover {
+            background-color: #5e5f5f;
+        }
+
+        .leaflet-control-zoom {
+            top: 60px;
+            /* تحريك الأزرار إلى أسفل قليلاً */
+        }
+
+
+
+        /* تنسيق التوغل بار */
+        /* تنسيق التوغل بار */
+        .toggle-bar {
+            position: fixed;
+            top: 12%;
+            right: 1%;
+            z-index: 1001;
+            /* تأكيد أن التوغل بار في الأمام */
+        }
+
+        /* تنسيق زر الأدوات */
+        .toggle-button {
+            background-color: #08b3ad;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+
+
+        .toggle-bar button,
+        .toggle-bar label {
+            pointer-events: all;
+        }
+
+        /* تنسيق قائمة الأدوات */
+        .tool-list {
+            display: none;
+            /* يتم إخفاء القائمة بشكل افتراضي */
+            margin-top: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            position: absolute;
+            right: 0;
+            width: 200px;
+            z-index: 2000;
+            /* التأكد من أن القائمة تظهر فوق أي عناصر أخرى */
+        }
+
+        /* تنسيق الأزرار داخل القائمة */
+        .tool-list button {
+            background-color: #fff;
+            border: none;
+            padding: 8px;
+            margin: 5px 0;
+            cursor: pointer;
+            width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .tool-list button:hover {
+            background-color: #08b3ad;
+            color: white;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        #time-box {
+            margin: 10px;
+            padding: 10px;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .leaflet-routing-container {
+            display: none;
+            /* إخفاء نافذة الاتجاهات */
+        }
+
+        .incident-icon {
+            color: red;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            #controls {
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+            }
+
+            #header-title {
+                position: relative;
+                /* تحويل النص إلى مكان ثابت */
+                left: 0;
+                /* إعادة النص إلى مكانه الأصلي */
+                transform: none;
+                /* إزالة التحويل */
+                margin-left: 50px;
+                /* المسافة بين النص والصورة */
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map-container">
+        <div id="map">
+            <div id="header">
+                <img src="./لوقو المركز الجديد.png" alt="Logo" id="header-logo" />
+                <h1 id="header-title">خريطه إداره الاحداث</h1>
+            </div>
+
+
+
+        </div>
+    </div>
+    <div id="toggle-bar" class="toggle-bar">
+        <button id="toggleButton" class="toggle-button">الأدوات</button>
+        <div id="tool-list" class="tool-list">
+            <label for="fileInput" class="custom-file-upload">
+                اختر ملف
+            </label>
+            <input type="file" id="fileInput" accept=".xlsx, .xls" />
+
+            <button id="incidentButton">حدد مكان الحادث</button>
+            <button id="nearestHospitalButton">أقرب مستشفى</button>
+            <button id="bestRouteButton" disabled>أفضل مسار للمستشفى</button>
+            <!-- تم تعطيل الزر بشكل افتراضي -->
+            <div id="time-box">وقت الوصول: <span id="arrival-time">-</span> | المسافة: <span id="distance">-</span>
+            </div>
+        </div>
+    </div>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <!-- XLSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Leaflet Routing Machine -->
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+
+    <script>
+        // إنشاء الخريطة
+        var map = L.map('map').setView([24.4686, 39.6122], 8);
+
+
+        // إضافة طبقة OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // الحصول على الزر والقائمة
+        const toggleButton = document.getElementById('toggleButton');
+        const toolList = document.getElementById('tool-list');
+
+        // وظيفة لفتح وإغلاق القائمة
+        toggleButton.addEventListener('click', () => {
+            // التبديل بين إظهار وإخفاء القائمة
+            if (toolList.style.display === 'block') {
+                toolList.style.display = 'none';
+            } else {
+                toolList.style.display = 'block';
+            }
+        });
+
+
+        // طبقة المستشفيات
+        const hospitalLayer = L.layerGroup().addTo(map);
+
+        // تحميل ملفات Excel
+        const fileInput = document.getElementById('fileInput');
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet);
+
+                    json.forEach(hospital => {
+                        const { Latitude, Longitude, Name, Beds } = hospital;
+                        const marker = L.marker([Latitude, Longitude]).addTo(hospitalLayer);
+                        marker.bindPopup(` <b> ${hospital['اسم المستشفي']}</b>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>الوصف</th>
+                                        <th>متوفر</th>
+                                        <th>مشغول</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>ICU الأطفال</td>
+                                        <td>${hospital['متوفّرICUPediatric']}</td>
+                                        <td>${hospital['مشغولICUPediatric']}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>ICU البالغين</td>
+                                        <td>${hospital['متوفّرICUAdults']}</td>
+                                        <td>${hospital['ICUAdultsمشغول']}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>التنويم للأطفال</td>
+                                        <td>${hospital['متوفّرRegular ward and othersPediatric']}</td>
+                                        <td>${hospital['مشغولRegular ward and othersPediatric']}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>التنويم للبالغين</td>
+                                        <td>${hospital['متوفّرRegular ward and othersAdults']}</td>
+                                        <td>${hospital['مشغولRegular ward and othersAdults']}</td>
+                                    </tr>
+                                
+                                    <tr>
+                                        <td>ER</td>
+                                        <td>${hospital['متوفّر(ER)']}</td>
+                                        <td>${hospital['مشغول(ER)']}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><b>إجمالي الأسرة</b></td>
+                                        <td colspan="2">${hospital['Total']}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        `);
+                    });
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+        // إضافة علامة الحادث
+        let incidentMarker = null;
+        let closestHospitalMarker = null;
+        let bestRouteControl = null;
+        const arrivalTimeElement = document.getElementById('arrival-time');
+        const distanceElement = document.getElementById('distance');
+
+        const incidentButton = document.getElementById('incidentButton');
+        incidentButton.addEventListener('click', () => {
+            // تفعيل حدث النقر مرة واحدة فقط لتحديد مكان الحادث
+            map.once('click', (event) => {
+                // إذا كانت العلامة موجودة مسبقًا، قم بحذفها
+                if (incidentMarker) {
+                    map.removeLayer(incidentMarker);
+                }
+
+                // إنشاء علامة جديدة في الموقع الذي تم النقر عليه
+                incidentMarker = L.marker(event.latlng, {
+                    icon: L.divIcon({
+                        className: 'incident-icon',
+                        html: 'X',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                    }),
+                }).addTo(map).bindPopup('الحادث').openPopup(); // فتح النافذة المنبثقة
+            });
+        });
+
+
+
+        // إخفاء زر "أفضل مسار" حتى تحديد أقرب مستشفى
+        document.getElementById('bestRouteButton').disabled = true; // جعل الزر غير مفعل
+
+        // إضافة وظيفة زر "أقرب مستشفى"
+        const nearestHospitalButton = document.getElementById('nearestHospitalButton');
+        nearestHospitalButton.addEventListener('click', () => {
+            if (!incidentMarker) {
+                alert('يرجى تحديد مكان الحادث أولاً');
+                return;
+            }
+
+            // البحث عن أقرب مستشفى
+            let nearestHospital = null;
+            let shortestDistance = Infinity;
+
+            hospitalLayer.eachLayer(layer => {
+                const distance = map.distance(incidentMarker.getLatLng(), layer.getLatLng());
+                if (distance < shortestDistance) {
+                    shortestDistance = distance;
+                    nearestHospital = layer;
+                }
+            });
+
+            if (nearestHospital) {
+                // إظهار أقرب مستشفى
+                if (closestHospitalMarker) map.removeLayer(closestHospitalMarker);
+                closestHospitalMarker = nearestHospital;
+                map.setView(nearestHospital.getLatLng(), 14);
+                nearestHospital.openPopup();
+
+                // تفعيل زر "أفضل مسار"
+                document.getElementById('bestRouteButton').disabled = false; // تفعيل الزر
+            } else {
+                alert('لا توجد مستشفيات على الخريطة');
+            }
+        });
+
+
+        bestRouteButton.addEventListener('click', () => {
+            if (!incidentMarker || !closestHospitalMarker) {
+                alert('يرجى تحديد مكان الحادث ثم تحديد أقرب مستشفى');
+                return;
+            }
+
+            if (bestRouteControl) {
+                map.removeControl(bestRouteControl);
+            }
+
+            // استخدام Leaflet Routing Machine لإيجاد المسار الأفضل
+            bestRouteControl = L.Routing.control({
+                waypoints: [
+                    incidentMarker.getLatLng(),
+                    closestHospitalMarker.getLatLng()
+                ],
+                createMarker: function () { return null; }, // إخفاء الماركرات على المسار
+                routeWhileDragging: true
+            }).addTo(map);
+
+            // تحديث الوقت والمسافة بناءً على المسار
+            bestRouteControl.on('routesfound', function (e) {
+                const route = e.routes[0];
+                const timeInMinutes = Math.round(route.summary.totalTime / 60);
+                const distanceInKm = (route.summary.totalDistance / 1000).toFixed(2);
+
+                arrivalTimeElement.textContent = `${timeInMinutes} دقيقة`;
+                distanceElement.textContent = `${distanceInKm} كم`;
+
+                // تحديد النقاط لتحديد النطاق على الخريطة
+                const bounds = L.latLngBounds([
+                    incidentMarker.getLatLng(),
+                    closestHospitalMarker.getLatLng()
+                ]);
+                map.fitBounds(bounds, { padding: [50, 50] }); // إضافة حواف صغيرة حول النقاط
+            });
+        });
+
+    </script>
+</body>
+
+</html>
